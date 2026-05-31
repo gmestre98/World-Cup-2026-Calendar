@@ -2,7 +2,7 @@ name: World Cup Calendar Sync
 
 on:
   schedule:
-    - cron: '0 */6 * * *'   # every 6 hours
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
@@ -32,9 +32,12 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Install ts-node + TypeScript runtime
+        run: npm install --no-save ts-node typescript @types/node
+
       - name: Write Google service account key
         run: |
           printf '%s' "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}" > service-account.json
 
       - name: Run calendar sync
-        run: npx ts-node main.ts
+        run: npx ts-node-esm main.ts
