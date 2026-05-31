@@ -12,6 +12,7 @@ interface ProcessedGame {
     competition: string;
     utcStart: string;
     idString: string;
+    group?: string;
 }
 
 interface OpenFootballTeam {
@@ -29,6 +30,7 @@ interface OpenFootballMatch {
     team2?: string | OpenFootballTeam;
     stadium?: OpenFootballStadium;
     venue?: string;
+    group?: string;
     ground?: string;
     round?: string;
 }
@@ -41,6 +43,72 @@ interface OpenFootballRound {
 interface OpenFootballResponse {
     rounds?: OpenFootballRound[];
     matches?: OpenFootballMatch[];
+}
+
+const countryFlagMap: Record<string, string> = {
+    'Argentina': '🇦🇷',
+    'Australia': '🇦🇺',
+    'Austria': '🇦🇹',
+    'Belgium': '🇧🇪',
+    'Bosnia & Herzegovina': '🇧🇦',
+    'Brazil': '🇧🇷',
+    'Canada': '🇨🇦',
+    'Cape Verde': '🇨🇻',
+    'Colombia': '🇨🇴',
+    'Costa Rica': '🇨🇷',
+    'Croatia': '🇭🇷',
+    'Cuba': '🇨🇺',
+    'Curacao': '🇨🇼',
+    'Czech Republic': '🇨🇿',
+    'DR Congo': '🇨🇩',
+    'Ecuador': '🇪🇨',
+    'Egypt': '🇪🇬',
+    'England': '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+    'France': '🇫🇷',
+    'Germany': '🇩🇪',
+    'Ghana': '🇬🇭',
+    'Haiti': '🇭🇹',
+    'Iraq': '🇮🇶',
+    'Iran': '🇮🇷',
+    'Ireland': '🇮🇪',
+    'Israel': '🇮🇱',
+    'Ivory Coast': '🇨🇮',
+    'Japan': '🇯🇵',
+    'Jordan': '🇯🇴',
+    'Mexico': '🇲🇽',
+    'Morocco': '🇲🇦',
+    'Netherlands': '🇳🇱',
+    'New Zealand': '🇳🇿',
+    'Norway': '🇳🇴',
+    'Panama': '🇵🇦',
+    'Paraguay': '🇵🇾',
+    'Portugal': '🇵🇹',
+    'Qatar': '🇶🇦',
+    'Saudi Arabia': '🇸🇦',
+    'Scotland': '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
+    'Senegal': '🇸🇳',
+    'South Africa': '🇿🇦',
+    'South Korea': '🇰🇷',
+    'Spain': '🇪🇸',
+    'Sweden': '🇸🇪',
+    'Switzerland': '🇨🇭',
+    'Tunisia': '🇹🇳',
+    'Turkey': '🇹🇷',
+    'Uganda': '🇺🇬',
+    'Uruguay': '🇺🇾',
+    'USA': '🇺🇸',
+    'Uzbekistan': '🇺🇿'
+};
+
+function getFlagForCountry(country: string): string {
+    const normalized = country.trim();
+    return countryFlagMap[normalized] || '';
+}
+
+function formatTeamName(team: string | OpenFootballTeam | undefined): string {
+    const name = typeof team === 'object' ? team.name : team || 'TBD';
+    const flag = getFlagForCountry(name);
+    return flag ? `${flag} ${name}` : name;
 }
 
 function buildUtcStart(date: string, time: string): string {
@@ -77,9 +145,10 @@ async function fetchWorldCupGamesFromUrl(): Promise<ProcessedGame[]> {
         const processMatch = (match: OpenFootballMatch, roundName?: string) => {
             if (!match.date) return;
 
-            const homeTeam = typeof match.team1 === 'object' ? match.team1.name : (match.team1 || "TBD");
-            const awayTeam = typeof match.team2 === 'object' ? match.team2.name : (match.team2 || "TBD");
-            const title = `🏆 ${homeTeam} vs ${awayTeam}`;
+            const homeTeam = formatTeamName(match.team1);
+            const awayTeam = formatTeamName(match.team2);
+            const title = `${homeTeam} vs ${awayTeam}`;
+            const group = match.group ? `Group ${match.group.trim()}` : undefined;
             const venue = match.ground || match.stadium?.name || match.venue || 'TBD Stadium';
             const competition = `FIFA World Cup 2026 - ${match.round || roundName || "Match"}`;
             const timeString = match.time || "18:00";
@@ -91,9 +160,9 @@ async function fetchWorldCupGamesFromUrl(): Promise<ProcessedGame[]> {
                 location: venue,
                 competition,
                 utcStart,
-                idString
+                idString,
+                group,
             });
-            console.log(idString);
         };
 
         if (matches.length > 0) {
@@ -134,7 +203,7 @@ async function insertGameInCalendar(game: ProcessedGame, calendarService: calend
     const eventBody: calendar_v3.Schema$Event = {
         summary: game.title,
         location: game.location,
-        description: game.competition,
+        description: game.competition + (game.group ? `\n${game.group}` : ''),
         id: gameId,
         start: {
             dateTime: startTime.toISOString(),
