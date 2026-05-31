@@ -1,9 +1,9 @@
 import axios from 'axios';
-import { google } from 'googleapis';
-import { calendar_v3 } from '@googleapis/calendar';
+import { google, calendar_v3 } from 'googleapis';
 import { createHash } from 'crypto';
 
 const SERVICE_ACCOUNT_FILE = process.env.GOOGLE_APPLICATION_CREDENTIALS || './service-account.json';
+const SERVICE_ACCOUNT_JSON = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 const publicCalendarId = process.env.PUBLIC_CALENDAR_ID || 'primary';
 
 interface ProcessedGame {
@@ -46,6 +46,7 @@ interface OpenFootballResponse {
 }
 
 const countryFlagMap: Record<string, string> = {
+    'Algeria': '🇩🇿',
     'Argentina': '🇦🇷',
     'Australia': '🇦🇺',
     'Austria': '🇦🇹',
@@ -186,11 +187,13 @@ async function fetchWorldCupGamesFromUrl(): Promise<ProcessedGame[]> {
     }
 }
 
-function initializeCalendarService(): calendar_v3.Calendar {
+async function initializeCalendarService(): Promise<calendar_v3.Calendar> {
     const auth = new google.auth.GoogleAuth({
-        keyFile: SERVICE_ACCOUNT_FILE,
+        credentials: SERVICE_ACCOUNT_JSON ? JSON.parse(SERVICE_ACCOUNT_JSON) : undefined,
+        keyFile: SERVICE_ACCOUNT_JSON ? undefined : SERVICE_ACCOUNT_FILE,
         scopes: ['https://www.googleapis.com/auth/calendar'],
     });
+
     return google.calendar({ version: 'v3', auth });
 }
 
@@ -261,7 +264,7 @@ async function main(): Promise<void> {
     }
     
     console.log(`Successfully mapped ${gamesList.length} matches from GitHub. Processing calendar context...`);
-    const calendarService: calendar_v3.Calendar = initializeCalendarService();
+    const calendarService: calendar_v3.Calendar = await initializeCalendarService();
     
     for (const game of gamesList) {
         if (game.utcStart && !game.utcStart.includes('NaN')) {

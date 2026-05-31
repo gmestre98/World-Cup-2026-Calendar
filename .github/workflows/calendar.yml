@@ -7,6 +7,7 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PUBLIC_CALENDAR_ID: ${{ secrets.PUBLIC_CALENDAR_ID }}
 
 jobs:
   sync-calendar:
@@ -32,12 +33,11 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Install tsx runtime
-        run: npm install --no-save tsx
-
       - name: Write Google service account key
         run: |
-          printf '%s' "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}" > service-account.json
+          printf '%s\n' "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}" > service-account.json
 
       - name: Run calendar sync
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
         run: npx tsx main.ts
