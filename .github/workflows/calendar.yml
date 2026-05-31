@@ -5,24 +5,24 @@ on:
     - cron: '0 */6 * * *'
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   sync-calendar:
     runs-on: ubuntu-latest
-    env:
-      GOOGLE_APPLICATION_CREDENTIALS: ./service-account.json
-      PUBLIC_CALENDAR_ID: ${{ secrets.PUBLIC_CALENDAR_ID }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Restore npm cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
@@ -32,12 +32,12 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Install ts-node + TypeScript runtime
-        run: npm install --no-save ts-node typescript @types/node
+      - name: Install tsx runtime
+        run: npm install --no-save tsx
 
       - name: Write Google service account key
         run: |
           printf '%s' "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}" > service-account.json
 
       - name: Run calendar sync
-        run: npx ts-node-esm main.ts
+        run: npx tsx main.ts
