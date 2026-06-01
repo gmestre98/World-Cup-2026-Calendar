@@ -5,6 +5,7 @@ import { createHash } from 'crypto';
 const SERVICE_ACCOUNT_FILE = process.env.GOOGLE_APPLICATION_CREDENTIALS || './service-account.json';
 const SERVICE_ACCOUNT_JSON = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 const publicCalendarId = process.env.PUBLIC_CALENDAR_ID || 'primary';
+const portugalCalendarId = process.env.PORTUGAL_CALENDAR_ID;
 
 interface ProcessedGame {
     title: string;
@@ -59,7 +60,7 @@ const countryFlagMap: Record<string, string> = {
     'Costa Rica': '🇨🇷',
     'Croatia': '🇭🇷',
     'Cuba': '🇨🇺',
-    'Curacao': '🇨🇼',
+    'Curaçao': '🇨🇼',
     'Czech Republic': '🇨🇿',
     'DR Congo': '🇨🇩',
     'Ecuador': '🇪🇨',
@@ -197,6 +198,10 @@ async function initializeCalendarService(): Promise<calendar_v3.Calendar> {
     return google.calendar({ version: 'v3', auth });
 }
 
+function isPortugalGame(game: ProcessedGame): boolean {
+    return game.title.includes('🇵🇹');
+}
+
 async function insertGameInCalendar(game: ProcessedGame, calendarService: calendar_v3.Calendar): Promise<void> {
     const startTime: Date = new Date(game.utcStart);
     const endTime: Date = new Date(startTime.getTime() + 2 * 60 * 60 * 1000);
@@ -218,39 +223,54 @@ async function insertGameInCalendar(game: ProcessedGame, calendarService: calend
         }
     };
 
+    // Insert into main calendar
+    await insertOrUpdateEvent(calendarService, publicCalendarId, gameId, game, eventBody);
+
+    // Insert into Portugal-specific calendar if applicable
+    if (isPortugalGame(game) && portugalCalendarId) {
+        await insertOrUpdateEvent(calendarService, portugalCalendarId, gameId, game, eventBody);
+    }
+}
+
+async function insertOrUpdateEvent(
+    calendarService: calendar_v3.Calendar,
+    calendarId: string,
+    gameId: string,
+    game: ProcessedGame,
+    eventBody: calendar_v3.Schema$Event
+): Promise<void> {
     try {
         await calendarService.events.insert({
-            calendarId: publicCalendarId,
+            calendarId,
             requestBody: eventBody,
         });
-        console.log(`[CREATED] ${game.title}`);
+        console.log(`[CREATED] ${game.title} in ${calendarId}`);
     } catch (err: any) {
         if (err.status === 409) {
             try {
                 const existingEvent = await calendarService.events.get({
-                    calendarId: publicCalendarId,
+                    calendarId,
                     eventId: gameId,
                 });
 
-                const timeChanged: boolean = existingEvent.data.start?.dateTime !== startTime.toISOString();
+                const timeChanged: boolean = existingEvent.data.start?.dateTime !== eventBody.start?.dateTime;
                 const teamsChanged: boolean = existingEvent.data.summary !== game.title;
 
-                // Overwrites parameters securely if team allocations migrate from structural identifiers to countries
                 if (teamsChanged || timeChanged) {
                     await calendarService.events.update({
-                        calendarId: publicCalendarId,
+                        calendarId,
                         eventId: gameId,
                         requestBody: eventBody,
                     });
-                    console.log(`[UPDATED] ${existingEvent.data.summary} -> ${game.title}`);
+                    console.log(`[UPDATED] ${existingEvent.data.summary} -> ${game.title} in ${calendarId}`);
                 } else {
-                    console.log(`[NO CHANGE] ${game.title}`);
+                    console.log(`[NO CHANGE] ${game.title} in ${calendarId}`);
                 }
             } catch (updateErr: any) {
-                console.error(`Error mapping collision overwrite strategy:`, updateErr.message);
+                console.error(`Error updating event in ${calendarId}:`, updateErr.message);
             }
         } else {
-            console.error(`API execution anomaly for ${game.title}:`, err.message);
+            console.error(`API execution anomaly for ${game.title} in ${calendarId}:`, err.message);
         }
     }
 }
