@@ -46,6 +46,30 @@ interface OpenFootballResponse {
     matches?: OpenFootballMatch[];
 }
 
+const countryCalendarIds: Record<string, string | undefined> = {
+    'Portugal': process.env.PORTUGAL_CALENDAR_ID,
+    'Norway': process.env.NORWAY_CALENDAR_ID,
+    'Argentina': process.env.ARGENTINA_CALENDAR_ID,
+    'Colombia': process.env.COLOMBIA_CALENDAR_ID,
+    'Cape Verde': process.env.CAPEVERDE_CALENDAR_ID,
+    'Bosnia & Herzegovina': process.env.BOSNIA_CALENDAR_ID,
+    'Belgium': process.env.BELGIUM_CALENDAR_ID,
+    'Germany': process.env.GERMANY_CALENDAR_ID,
+};
+
+const gameOverrides: Record<
+    string,
+    {
+        matchTitle?: string;
+        location?: string;
+        competition?: string;
+        group?: string;
+    }
+> = {
+    // Example
+    //'wc2026-m-83': { matchTitle: '🇵🇹 Portugal vs 🇪🇸 Spain'},
+};
+
 const countryFlagMap: Record<string, string> = {
     'Algeria': '🇩🇿',
     'Argentina': '🇦🇷',
@@ -99,7 +123,7 @@ const countryFlagMap: Record<string, string> = {
     'Uganda': '🇺🇬',
     'Uruguay': '🇺🇾',
     'USA': '🇺🇸',
-    'Uzbekistan': '🇺🇿'
+    'Uzbekistan': '🇺🇿',
 };
 
 function getFlagForCountry(country: string): string {
@@ -133,8 +157,8 @@ function buildUtcStart(date: string, time: string): string {
 }
 
 async function fetchWorldCupGamesFromUrl(): Promise<ProcessedGame[]> {
-    const targetRawUrl = "https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json";
-    
+    const targetRawUrl = 'https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json';
+
     try {
         console.log(`Connecting to: ${targetRawUrl}`);
         const response = await axios.get<OpenFootballResponse>(targetRawUrl);
@@ -149,21 +173,24 @@ async function fetchWorldCupGamesFromUrl(): Promise<ProcessedGame[]> {
 
             const homeTeam = formatTeamName(match.team1);
             const awayTeam = formatTeamName(match.team2);
-            const title = `${homeTeam} vs ${awayTeam}`;
-            const group = match.group ? `Group ${match.group.trim()}` : undefined;
+            const defaultTitle = `${homeTeam} vs ${awayTeam}`;
+            const matchGroup = match.group?.trim();
+            const group = matchGroup ? matchGroup : undefined;
             const venue = match.ground || match.stadium?.name || match.venue || 'TBD Stadium';
-            const competition = `FIFA World Cup 2026 - ${match.round || roundName || "Match"}`;
-            const timeString = match.time || "18:00";
+            const competition = `FIFA World Cup 2026 - ${match.round || roundName || 'Match'}`;
+            const timeString = match.time || '18:00';
             const utcStart = buildUtcStart(match.date, timeString);
             const idString = `wc2026-m-${localMatchIndex++}`;
 
+            const override = gameOverrides[idString];
+
             gamesList.push({
-                title,
-                location: venue,
-                competition,
+                title: override?.matchTitle ?? defaultTitle,
+                location: override?.location ?? venue,
+                competition: override?.competition ?? competition,
                 utcStart,
                 idString,
-                group,
+                group: override?.group ?? group,
             });
         };
 
@@ -173,7 +200,7 @@ async function fetchWorldCupGamesFromUrl(): Promise<ProcessedGame[]> {
             }
         } else {
             for (const round of rounds) {
-                const roundName = round.name || "Tournament Match";
+                const roundName = round.name || 'Tournament Match';
                 const roundMatches = round.matches || [];
                 for (const match of roundMatches) {
                     processMatch(match, roundName);
@@ -183,7 +210,7 @@ async function fetchWorldCupGamesFromUrl(): Promise<ProcessedGame[]> {
 
         return gamesList;
     } catch (error: any) {
-        console.error("Error streaming raw data package from GitHub:", error.message);
+        console.error('Error streaming raw data package from GitHub:', error.message);
         return [];
     }
 }
@@ -198,15 +225,14 @@ async function initializeCalendarService(): Promise<calendar_v3.Calendar> {
     return google.calendar({ version: 'v3', auth });
 }
 
-function isPortugalGame(game: ProcessedGame): boolean {
-    return game.title.includes('🇵🇹');
+function isSpecificCountryGame(game: ProcessedGame, country: string): boolean {
+    return game.title.includes(country);
 }
 
 async function insertGameInCalendar(game: ProcessedGame, calendarService: calendar_v3.Calendar): Promise<void> {
-    const startTime: Date = new Date(game.utcStart);
-    const endTime: Date = new Date(startTime.getTime() + 2 * 60 * 60 * 1000);
-
-    const gameId: string = createHash('sha256').update(game.idString).digest('hex');
+    const startTime = new Date(game.utcStart);
+    const endTime = new Date(startTime.getTime() + 2 * 60 * 60 * 1000);
+    const gameId = createHash('sha256').update(game.idString).digest('hex');
 
     const eventBody: calendar_v3.Schema$Event = {
         summary: game.title,
@@ -220,16 +246,20 @@ async function insertGameInCalendar(game: ProcessedGame, calendarService: calend
         end: {
             dateTime: endTime.toISOString(),
             timeZone: 'UTC',
-        }
+        },
     };
 
-    // Insert into main calendar
     await insertOrUpdateEvent(calendarService, publicCalendarId, gameId, game, eventBody);
 
-    // Insert into Portugal-specific calendar if applicable
-    if (isPortugalGame(game) && portugalCalendarId) {
-        await insertOrUpdateEvent(calendarService, portugalCalendarId, gameId, game, eventBody);
+    for (const [country, calendarID] of Object.entries(countryCalendarIds)) {
+        if (calendarID && isSpecificCountryGame(game, country)) {
+            await insertOrUpdateEvent(calendarService, calendarID, gameId, game, eventBody);
+        }
     }
+}
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function insertOrUpdateEvent(
@@ -253,8 +283,8 @@ async function insertOrUpdateEvent(
                     eventId: gameId,
                 });
 
-                const timeChanged: boolean = existingEvent.data.start?.dateTime !== eventBody.start?.dateTime;
-                const teamsChanged: boolean = existingEvent.data.summary !== game.title;
+                const timeChanged = existingEvent.data.start?.dateTime !== eventBody.start?.dateTime;
+                const teamsChanged = existingEvent.data.summary !== game.title;
 
                 if (teamsChanged || timeChanged) {
                     await calendarService.events.update({
@@ -263,6 +293,7 @@ async function insertOrUpdateEvent(
                         requestBody: eventBody,
                     });
                     console.log(`[UPDATED] ${existingEvent.data.summary} -> ${game.title} in ${calendarId}`);
+                    await sleep(100); // brief pause to respect API limits
                 } else {
                     console.log(`[NO CHANGE] ${game.title} in ${calendarId}`);
                 }
@@ -277,21 +308,21 @@ async function insertOrUpdateEvent(
 
 async function main(): Promise<void> {
     const gamesList = await fetchWorldCupGamesFromUrl();
-    
+
     if (gamesList.length === 0) {
-        console.log("No structural match map items returned.");
+        console.log('No structural match map items returned.');
         return;
     }
-    
+
     console.log(`Successfully mapped ${gamesList.length} matches from GitHub. Processing calendar context...`);
     const calendarService: calendar_v3.Calendar = await initializeCalendarService();
-    
+
     for (const game of gamesList) {
         if (game.utcStart && !game.utcStart.includes('NaN')) {
             await insertGameInCalendar(game, calendarService);
         }
     }
-    console.log("Sync sequence completed successfully!");
+    console.log('Sync sequence completed successfully!');
 }
 
 main();
