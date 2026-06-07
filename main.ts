@@ -55,6 +55,7 @@ const countryCalendarIds: Record<string, string | undefined> = {
     'Bosnia & Herzegovina': process.env.BOSNIA_CALENDAR_ID,
     'Belgium': process.env.BELGIUM_CALENDAR_ID,
     'Germany': process.env.GERMANY_CALENDAR_ID,
+    'Japan': process.env.JAPAN_CALENDAR_ID,
 };
 
 const gameOverrides: Record<

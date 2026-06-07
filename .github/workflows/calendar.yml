@@ -16,6 +16,7 @@ env:
   BOSNIA_CALENDAR_ID: ${{ secrets.BOSNIA_CALENDAR_ID }}
   BELGIUM_CALENDAR_ID: ${{ secrets.BELGIUM_CALENDAR_ID }}
   GERMANY_CALENDAR_ID: ${{ secrets.GERMANY_CALENDAR_ID }}
+  JAPAN_CALENDAR_ID: ${{ secrets.JAPAN_CALENDAR_ID }}
 
 jobs:
   sync-calendar:
